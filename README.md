@@ -1,4 +1,4 @@
-# claude-desktop-kali-setup
+# Claude-Desktop-Kali-Setup
 
 One-command installer for Claude Desktop + MCP servers on Kali/Debian/Ubuntu.
 

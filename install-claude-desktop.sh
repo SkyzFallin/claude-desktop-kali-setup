@@ -6,7 +6,7 @@ set -euo pipefail
 # Usage: sudo ./install-claude-desktop.sh
 #
 # Sources:
-#   https://github.com/aaddrick/claude-desktop-debian
+#   https://claude.ai/download
 #   https://www.kali.org/tools/mcp-kali-server/
 
 if [[ $EUID -ne 0 ]]; then
@@ -15,17 +15,35 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REAL_USER="${SUDO_USER:-$USER}"
-REAL_HOME=$(eval echo "~$REAL_USER")
+REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
+if [[ -z "$REAL_HOME" || ! -d "$REAL_HOME" ]]; then
+    echo "Could not determine a valid home directory for user '$REAL_USER'." >&2
+    exit 1
+fi
+
+if [[ "$REAL_USER" == "root" ]]; then
+    echo "Refusing to configure Claude Desktop for root. Run with sudo from your regular user account." >&2
+    exit 1
+fi
+
 CONFIG_DIR="$REAL_HOME/.config/Claude"
 CONFIG_FILE="$CONFIG_DIR/claude_desktop_config.json"
+KEYRING_PATH="/usr/share/keyrings/claude-desktop.gpg"
+REPO_LIST_PATH="/etc/apt/sources.list.d/claude-desktop.list"
 
-echo "[*] Adding Claude Desktop GPG key..."
-curl -fsSL https://aaddrick.github.io/claude-desktop-debian/KEY.gpg \
-    | gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg
+echo "[*] Installing required dependencies..."
+apt update -qq
+apt install -y --no-install-recommends ca-certificates curl gnupg
+
+echo "[*] Adding Claude Desktop GPG key from claude.ai..."
+curl -fsSL https://claude.ai/debian/pubkey.gpg \
+    | gpg --dearmor -o "$KEYRING_PATH"
+chmod 0644 "$KEYRING_PATH"
 
 echo "[*] Adding APT repository..."
-echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://aaddrick.github.io/claude-desktop-debian stable main" \
-    > /etc/apt/sources.list.d/claude-desktop.list
+echo "deb [signed-by=$KEYRING_PATH arch=amd64,arm64] https://claude.ai/debian/ stable main" \
+    > "$REPO_LIST_PATH"
+chmod 0644 "$REPO_LIST_PATH"
 
 echo "[*] Updating package lists..."
 apt update -qq
@@ -35,7 +53,8 @@ apt install -y claude-desktop mcp-kali-server
 
 echo "[*] Configuring MCP servers..."
 mkdir -p "$CONFIG_DIR"
-cat > "$CONFIG_FILE" << EOF
+TMP_CONFIG_FILE="$(mktemp)"
+cat > "$TMP_CONFIG_FILE" << EOF
 {
   "mcpServers": {
     "filesystem": {
@@ -55,6 +74,10 @@ cat > "$CONFIG_FILE" << EOF
   }
 }
 EOF
+
+python3 -m json.tool "$TMP_CONFIG_FILE" >/dev/null
+install -m 0600 -o "$REAL_USER" -g "$REAL_USER" "$TMP_CONFIG_FILE" "$CONFIG_FILE"
+rm -f "$TMP_CONFIG_FILE"
 chown -R "$REAL_USER:$REAL_USER" "$CONFIG_DIR"
 
 echo "[+] Installation complete."

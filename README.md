@@ -12,8 +12,8 @@ One-command installer for Claude Desktop + MCP servers on Kali/Debian/Ubuntu.
 
 The install script handles everything needed to get Claude Desktop running with MCP server integration on Debian-based Linux:
 
-- Adds the [Claude Desktop APT repository](https://github.com/anthropics/claude-desktop-debian) and imports the GPG signing key
-- Installs `claude-desktop` and `mcp-kali-server`
+- Adds the official Claude Desktop APT repository (`https://claude.ai/debian/`) and imports the GPG signing key
+- Installs `claude-desktop` and `mcp-kali-server` with required bootstrap dependencies (`ca-certificates`, `curl`, `gnupg`)
 - Generates the MCP configuration at `~/.config/Claude/claude_desktop_config.json` with two servers pre-configured:
   - **Filesystem MCP** — gives Claude access to read/write files in your home directory
   - **Kali MCP** — exposes Kali Linux security tools to Claude for interactive use
@@ -27,13 +27,17 @@ The installer creates this MCP config automatically:
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@anthropic/mcp-filesystem"],
-      "env": {}
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "<your-home-directory>"]
     },
-    "kali": {
-      "command": "kali-server-mcp",
-      "args": [],
-      "env": {}
+    "kali-mcp-server": {
+      "command": "python3",
+      "args": [
+        "/usr/share/mcp-kali-server/mcp_server.py",
+        "--server",
+        "http://127.0.0.1:5000/"
+      ],
+      "description": "Kali MCP Server",
+      "timeout": 300
     }
   }
 }
@@ -78,6 +82,7 @@ The script imports the Claude Desktop signing key automatically. If you see GPG 
 
 ```bash
 curl -fsSL https://claude.ai/debian/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg
+echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://claude.ai/debian/ stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list > /dev/null
 ```
 
 **`claude-desktop` command not found after install:**
